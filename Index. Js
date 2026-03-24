@@ -1,0 +1,241 @@
+import makeWASocket, {
+  useMultiFileAuthState,
+  fetchLatestBaileysVersion,
+  DisconnectReason
+} from "@whiskeysockets/baileys";
+import qrcode from "qrcode-terminal";
+
+// 👑 CONFIG (Do not change session logic)
+const CHANNEL = "https://whatsapp.com/channel/0029VbCl4EiJZg3y2M3mfC1e";
+const OWNER = "923488553517@s.whatsapp.net";
+
+let settings = {
+  antilink: false,
+  antidelete: true, // Activated for pro feel
+  antiedit: false,
+  anticall: true,
+  welcome: true,
+  autoread: true
+};
+
+let store = new Map();
+let warnings = {};
+
+function getText(msg) {
+  return msg?.message?.conversation ||
+    msg?.message?.extendedTextMessage?.text ||
+    msg?.message?.imageMessage?.caption ||
+    null;
+}
+
+async function startBot() {
+  const { state, saveCreds } = await useMultiFileAuthState("session");
+  const { version } = await fetchLatestBaileysVersion();
+
+  const sock = makeWASocket({
+    version,
+    auth: state,
+    printQRInTerminal: true // Keeping your terminal QR active
+  });
+
+  sock.ev.on("creds.update", saveCreds);
+
+  sock.ev.on("connection.update", async (update) => {
+    const { connection, lastDisconnect, qr } = update;
+    if (qr) qrcode.generate(qr, { small: true });
+
+    if (connection === "close") {
+      const reconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+      if (reconnect) startBot();
+    }
+
+    if (connection === "open") {
+      console.log("👑 MR RAZA MD CONNECTED");
+      await sock.sendMessage(OWNER, { text: `✅ *MR RAZA MD BOT ONLINE*\n\n15+ New Pro Commands Added!` });
+    }
+  });
+
+  sock.ev.on("messages.upsert", async ({ messages }) => {
+    const msg = messages[0];
+    if (!msg.message || msg.key.remoteJid === 'status@broadcast') return;
+
+    const jid = msg.key.remoteJid;
+    const isGroup = jid.endsWith('@g.us');
+    const sender = msg.key.participant || jid;
+    const id = msg.key.id;
+    const pushName = msg.pushName || "User";
+
+    let text = getText(msg);
+    if (!text) return;
+    text = text.toLowerCase().trim();
+    
+    // Save for Anti-Delete
+    store.set(id, msg);
+
+    // 1. AUTO READ STATUS/MESSAGES
+    if (settings.autoread) await sock.readMessages([msg.key]);
+
+    // 🚫 ANTI LINK
+    if (settings.antilink && isGroup && text.includes("chat.whatsapp.com")) {
+        await sock.sendMessage(jid, { delete: msg.key });
+        await sock.sendMessage(jid, { text: `🚫 @${sender.split('@')[0]} Links not allowed!`, mentions: [sender] });
+    }
+
+    // --- 15+ NEW PRO COMMANDS ---
+    
+    // 2. MENU
+    if (text === ".menu") {
+      return sock.sendMessage(jid, {
+        text: `👑 *MR RAZA MD PRO MENU* 👑
+
+*Admin/Group:*
+1. .kick (reply)
+2. .add (number)
+3. .promote (reply)
+4. .demote (reply)
+5. .hidetag (text)
+6. .group (open/close)
+7. .tagall
+
+*Fun/Chat:*
+8. .hi
+9. .ping
+10. .runtime
+11. .owner
+12. .owner (contact)
+13. .channel
+
+*Bot Settings:*
+14. .settings
+15. .antilink (on/off)`
+      });
+    }
+
+    // 3. HI / GREETING
+    if (text === "hi" || text === "hello") {
+        return sock.sendMessage(jid, { text: `Hello ${pushName}! How can I help you today?` });
+    }
+
+    // 4. PING
+    if (text === ".ping") {
+        const start = Date.now();
+        await sock.sendMessage(jid, { text: "Testing Speed..." });
+        const end = Date.now();
+        return sock.sendMessage(jid, { text: `🚀 *Pong:* ${end - start}ms` });
+    }
+
+    // 5. RUNTIME
+    if (text === ".runtime") {
+        return sock.sendMessage(jid, { text: `🕒 *Bot Runtime:* ${process.uptime().toFixed(2)} seconds` });
+    }
+
+    // 6. OWNER CONTACT
+    if (text === ".owner") {
+        const vcard = 'BEGIN:VCARD\n' + 'VERSION:3.0\n' + 'FN:MR RAZA\n' + 'ORG:Owner;\n' + 'TEL;type=CELL;type=VOICE;waid=923488553517:+92 348 8553517\n' + 'END:VCARD';
+        return sock.sendMessage(jid, { contacts: { displayName: 'MR RAZA', contacts: [{ vcard }] } });
+    }
+
+    // 7. HIDETAG
+    if (text.startsWith(".hidetag") && isGroup) {
+        let meta = await sock.groupMetadata(jid);
+        let mems = meta.participants.map(v => v.id);
+        let txt = text.replace(".hidetag", "").trim() || "Attention!";
+        return sock.sendMessage(jid, { text: txt, mentions: mems });
+    }
+
+    // 8. GROUP OPEN/CLOSE
+    if (text === ".group open") {
+        await sock.groupSettingUpdate(jid, 'not_announcement');
+        return sock.sendMessage(jid, { text: "🔓 Group Opened!" });
+    }
+    if (text === ".group close") {
+        await sock.groupSettingUpdate(jid, 'announcement');
+        return sock.sendMessage(jid, { text: "🔒 Group Closed! (Admins Only)" });
+    }
+
+    // 9. TAGALL
+    if (text === ".tagall" && isGroup) {
+        let meta = await sock.groupMetadata(jid);
+        let list = `📢 *Tag All Member*\n\n`;
+        for (let mem of meta.participants) { list += `🔹 @${mem.id.split('@')[0]}\n`; }
+        return sock.sendMessage(jid, { text: list, mentions: meta.participants.map(v => v.id) });
+    }
+
+    // 10. KICK (Reply to msg)
+    if (text === ".kick" && msg.message.extendedTextMessage) {
+        let target = msg.message.extendedTextMessage.contextInfo.participant;
+        await sock.groupParticipantsUpdate(jid, [target], "remove");
+        return sock.sendMessage(jid, { text: "✅ Removed successfully." });
+    }
+
+    // 11. PROMOTE
+    if (text === ".promote" && msg.message.extendedTextMessage) {
+        let target = msg.message.extendedTextMessage.contextInfo.participant;
+        await sock.groupParticipantsUpdate(jid, [target], "promote");
+        return sock.sendMessage(jid, { text: "✅ Promoted to Admin." });
+    }
+
+    // 12. DEMOTE
+    if (text === ".demote" && msg.message.extendedTextMessage) {
+        let target = msg.message.extendedTextMessage.contextInfo.participant;
+        await sock.groupParticipantsUpdate(jid, [target], "demote");
+        return sock.sendMessage(jid, { text: "✅ Admin access removed." });
+    }
+
+    // 13. CHANNEL LINK
+    if (text === ".channel") {
+        return sock.sendMessage(jid, { text: `📢 *Join our Official Channel:*\n${CHANNEL}` });
+    }
+
+    // 14. ADDCALL (Mock Command/Info)
+    if (text === ".anticall") {
+        return sock.sendMessage(jid, { text: `🛡️ Anti-Call is currently: *${settings.anticall ? "ON" : "OFF"}*` });
+    }
+
+    // 15. SETTINGS
+    if (text === ".settings") {
+      return sock.sendMessage(jid, { text: `⚙️ *BOT CURRENT SETTINGS*\n\n${JSON.stringify(settings, null, 2)}` });
+    }
+
+    // Settings Toggle Logic
+    if (text.endsWith("on") || text.endsWith("off")) {
+      let key = text.split(" ")[0].replace(".", "");
+      if (settings.hasOwnProperty(key)) {
+        settings[key] = text.endsWith("on");
+        return sock.sendMessage(jid, { text: `✅ *${key}* is now ${settings[key] ? "ENABLED" : "DISABLED"}` });
+      }
+    }
+  });
+
+  // ❌ ADVANCED ANTI-DELETE
+  sock.ev.on("messages.update", async (updates) => {
+    for (const u of updates) {
+      if (settings.antidelete && u.update.message === null) {
+        const oldMsg = store.get(u.key.id);
+        if (oldMsg) {
+          const sender = oldMsg.key.participant || oldMsg.key.remoteJid;
+          const content = getText(oldMsg) || "Media Message";
+          await sock.sendMessage(u.key.remoteJid, { 
+            text: `⚠️ *DELETED MESSAGE DETECTED*\n\n👤 *User:* @${sender.split('@')[0]}\n💬 *Message:* ${content}`,
+            mentions: [sender]
+          });
+        }
+      }
+    }
+  });
+
+  // 👋 ENHANCED WELCOME
+  sock.ev.on("group-participants.update", async (data) => {
+    if (!settings.welcome) return;
+    if (data.action === "add") {
+      for (let user of data.participants) {
+        await sock.sendMessage(data.id, {
+          text: `👋 Welcome @${user.split("@")[0]} to our Group!\n\nDon't forget to join our channel:\n${CHANNEL}`,
+          mentions: [user]
+        });
+      }
+    }
+  });
+}
+
+startBot();
