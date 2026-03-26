@@ -1,0 +1,1 @@
+{\n  "name": "whatsapp-bot",\n  "version": "1.0.0",\n  "description": "A WhatsApp bot using baileys, pino, and yt-search",\n  "main": "index.js",\n  "scripts": {\n    "start": "node index.js"\n  },\n  "dependencies": {\n    "baileys": "^2.0.0",\n    "pino": "^7.0.0",\n    "yt-search": "^3.2.1"\n  }\n}
