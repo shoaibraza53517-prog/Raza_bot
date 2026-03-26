@@ -1,1 +1,20 @@
-{\n  "name": "whatsapp-bot",\n  "version": "1.0.0",\n  "description": "A WhatsApp bot using baileys, pino, and yt-search",\n  "main": "index.js",\n  "scripts": {\n    "start": "node index.js"\n  },\n  "dependencies": {\n    "baileys": "^2.0.0",\n    "pino": "^7.0.0",\n    "yt-search": "^3.2.1"\n  }\n}
+{
+  "name": "whatsapp-md-bot",
+  "version": "1.0.0",
+  "description": "A powerful WhatsApp MD bot for managing groups and chats with pairing code",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": ["whatsapp", "bot", "md-bot", "baileys", "pairing-code"],
+  "author": "Shoaib Raza",
+  "license": "MIT",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.3.0",
+    "pino": "^8.17.2",
+    "yt-search": "^3.2.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
